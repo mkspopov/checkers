@@ -1,0 +1,91 @@
+* {
+    margin: auto;
+}
+
+div {
+    display: flex;
+    justify-content: space-between;
+}
+
+.desktop {
+    margin: 0;
+    width: 100%;
+}
+
+.WhiteTurnText {
+    text-align: center;
+    color: black;
+    font-family: "open sans";
+    font-size: 55px;
+}
+
+.BlackTurnText {
+    text-align: center;
+    color: lightgray;
+    font-family: "open sans";
+    font-size: 55px;
+}
+
+td {
+    background-color: lightgrey;
+    width: 65px;
+    height: 65px;
+    text-align: center;
+}
+
+.NoPieceHere {
+    background-color: peachpuff;
+}
+
+.WhitePiece {
+    background-color: whitesmoke;
+    width: 20px;
+    height: 20px;
+    padding: 12px;
+    border: 1px solid grey;
+    border-radius: 50px;
+}
+
+.BlackPiece {
+    background-color: dimgray;
+    width: 20px;
+    height: 20px;
+    padding: 12px;
+    border: 1px solid grey;
+    border-radius: 50px;
+}
+
+p {
+    display: inline-block;
+}
+
+span {
+    display: inline-block;
+}
+
+#Divider {
+    font-size: 90px;
+    margin-left: 15px;
+    margin-right: 15px;
+}
+
+.Ring {
+    display: inline-block;
+    /*margin: 1em;*/
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    /*vertical-align: middle;*/
+}
+
+.OuterRing {
+    border: 2px solid #e2bb75;
+}
+
+.Queen.WhitePiece {
+    background-color: orange;
+}
+
+.Queen.BlackPiece {
+    background-color: purple;
+}
