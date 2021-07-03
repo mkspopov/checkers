@@ -1,44 +1,37 @@
 // document.write(`<p>${board}</p>`)
 
-function InitializeBoard() {
-    let fromLineStart = false
-    let id = 0
-    for (let i = 0; i < 64; ++i) {
-        if (i >= 24 && i < 40) {
-            board.push(null)
-        } else {
-            if (fromLineStart ^ i % 2) {
-                board.push(id++)
-            } else {
-                board.push(null)
-            }
-        }
-        if (i % 8 === 7) {
-            fromLineStart = !fromLineStart
+function makeStruct(names) {
+    names = names.split(' ')
+    let count = names.length
+
+    function constructor() {
+        for (let i = 0; i < count; i++) {
+            this[names[i]] = arguments[i]
         }
     }
-    console.assert(board[0] === null)
-    console.assert(board[1] === 0)
-    console.assert(board[2] === null)
-
-    console.assert(board[8] === 4)
-
-    console.assert(board[56] === 20)
-    console.assert(board[57] === null)
+    return constructor;
 }
+
+let PathNode = makeStruct("children isEmptyCell cell")
+
+let board = []
+let whitePiecesStartId = 0
 
 const whiteTurnText = document.querySelector(".WhiteTurnText")
 const blackTurnText = document.querySelector(".BlackTurnText")
 
-let board = []
+const FORWARD = [-9, -7]
+const BACKWARD = [7, 9]
+const BOTH_DIRS = [-9, -7, 7, 9]
 
-const cells = document.querySelectorAll("td")
+let cells = document.querySelectorAll("td")
 let whitePieces = document.querySelectorAll("span")
 let blackPieces = document.querySelectorAll("p")
-let playerPieces
+let playerPieces = whitePieces
 
 let whitesTurn = true
-let mustJumpFrom = null
+let mustJumpFrom = []
+let queenRoutes = null
 
 let selectedPiece = {
     pieceId: -1,
@@ -46,52 +39,122 @@ let selectedPiece = {
 }
 let availableMoves = [];
 
+function InitializeTable(numRows, numCols) {
+    let size = numRows * numCols
+    for (let i = 0; i < size; ++i) {
+        board.push(null)
+    }
+    let docTable = document.querySelector(".Board")
+    for (let i = 0; i < numRows; ++i) {
+        docTable.innerHTML += `<tr class='Row'>\n</tr>\n`
+    }
+    let rows = document.querySelectorAll(".Row")
+    let fromLineStart = false
+    for (let i = 0; i < size; ++i) {
+        let row = rows[i / numCols >> 0]
+        if (fromLineStart ^ i % 2) {
+            row.innerHTML += `<td></td>\n`
+        } else {
+            row.innerHTML += `<td class='NoPieceHere'></td>\n`
+        }
+        if (i % numCols === numCols - 1) {
+            fromLineStart = !fromLineStart
+        }
+    }
+}
+
+function InitializePieces(numRows, numCols, ignoreRowFrom, ignoreRowTo) {
+    let size = numRows * numCols
+    let cs = document.querySelectorAll("td")
+    let fromLineStart = false
+    let id = 0
+    for (let i = 0; i < size; ++i) {
+        if (i < ignoreRowFrom * numCols || i >= ignoreRowTo * numCols) {
+            if (fromLineStart ^ i % 2) {
+                if (i < ignoreRowFrom * numCols) {
+                    cs[i].innerHTML = `<td><p class='BlackPiece' id='${id}'></p></td>\n`
+                } else {
+                    cs[i].innerHTML = `<td><span class='WhitePiece' id='${id}'></span></td>\n`
+                }
+                board[i] = id++
+            }
+        }
+        if (i % numCols === numCols - 1) {
+            fromLineStart = !fromLineStart
+        }
+    }
+    whitePiecesStartId = 12
+    cells = document.querySelectorAll("td")
+    whitePieces = document.querySelectorAll("span")
+    blackPieces = document.querySelectorAll("p")
+}
+
+function SetPieces(wp, bp) {
+    let cs = document.querySelectorAll("td")
+    let id = 0
+    for (let blackPiece of bp) {
+        cs[blackPiece].innerHTML = `<td><p class='BlackPiece' id='${id}'></p></td>\n`
+        board[blackPiece] = id++
+    }
+    whitePiecesStartId = bp.length
+    for (let whitePiece of wp) {
+        cs[whitePiece].innerHTML = `<td><span class='WhitePiece' id='${id}'></span></td>\n`
+        board[whitePiece] = id++
+    }
+    cells = document.querySelectorAll("td")
+    whitePieces = document.querySelectorAll("span")
+    blackPieces = document.querySelectorAll("p")
+}
+
 function InitializeEventListenersOnPieces() {
     if (whitesTurn) {
         playerPieces = whitePieces
     } else {
         playerPieces = blackPieces
     }
-
-    if (mustJumpFrom) {
-        document.getElementById(board[mustJumpFrom]).addEventListener("click", GetPlayerPieces)
+    CheckMustJump()
+    if (mustJumpFrom.length > 0) {
+        for (let from of mustJumpFrom) {
+            document.getElementById(board[from]).addEventListener("click", GetPlayerPieces)
+        }
         return
     }
-
-    CheckMustJump()
     for (let i = 0; i < playerPieces.length; ++i) {
         playerPieces[i].addEventListener("click", GetPlayerPieces)
     }
 }
 
 function CheckMustJump() {
+    mustJumpFrom.length = 0
     for (let i = 0; i < playerPieces.length; ++i) {
         let cell = board.indexOf(parseInt(playerPieces[i].id))
+        if (cell < 0 || cell >= board.length) {
+            continue
+        }
         let jumps = GetAvailableJumps(cell)
-        if (jumps.length > 0) {
-            mustJumpFrom = true
-            return
+        if (HasJumps(jumps)) {
+            mustJumpFrom.push(cell)
         }
     }
-    mustJumpFrom = null
 }
 
 function GetPlayerPieces() {
     RemoveCellonclick()
-    // for (let i = 0; i < playerPieces.length; ++i) {
-    //     playerPieces[i].style.border = "1px solid red"
-    // }
     ResetSelectedPieceProperties()
     ResetAvailableMoves()
     GetSelectedPiece()
 
-    if (!mustJumpFrom) {
+    if (mustJumpFrom.length === 0) {
         GetAvailableSpaces()
     } else {
         availableMoves = GetAvailableJumps(selectedPiece.cell)
     }
 
     HighlightPiece()
+}
+
+function HasJumps(jumps) {
+    return jumps.length > 0
 }
 
 function GetSelectedPiece() {
@@ -115,7 +178,7 @@ function ResetSelectedPieceProperties() {
 function GetAvailableSpaces() {
     let from = selectedPiece.cell
     if (IsPieceQueen(from)) {
-        for (let dir of [-9, -7, 7, 9]) {
+        for (let dir of BOTH_DIRS) {
             for (let step = 1; step < 8; ++step) {
                 let cell = from + dir * step
                 if (IsEnemyHere(cell) || board[cell] !== null || cells[cell].classList.contains("NoPieceHere")) {
@@ -126,8 +189,7 @@ function GetAvailableSpaces() {
         }
         return
     }
-    let dir = whitesTurn ? -1 : 1
-    let moves = [7 * dir, 9 * dir]
+    let moves = whitesTurn ? FORWARD : BACKWARD
     for (let move of moves) {
         let cell = from + move
         if (board[cell] === null && !cells[cell].classList.contains("NoPieceHere")) {
@@ -147,49 +209,96 @@ function ResetAvailableMoves() {
 }
 
 function IsWhitePiece(cell) {
-    return board[cell] >= 12
+    return board[cell] >= whitePiecesStartId
 }
 
 function IsEnemyHere(cell) {
-    return !cells[cell].classList.contains("NoPieceHere") &&
+    return cells[cell] !== undefined &&
+        !cells[cell].classList.contains("NoPieceHere") &&
         board[cell] !== null &&
         (whitesTurn ^ IsWhitePiece(cell))
 }
 
 function IsPieceQueen(cell) {
-    console.assert(board[cell])
+    console.assert(board[cell] !== null)
     return document.getElementById(board[cell]).classList.contains("Queen");
+}
+
+function CalcJumpPathsHelper(node, from, eaten, maxSteps, forbiddenDir) {
+    for (let dir of BOTH_DIRS) {
+        if (dir === forbiddenDir) {
+            continue
+        }
+        let metEnemy = null
+        let enemyNode = null
+        for (let step = 1; step < maxSteps; ++step) {
+            let cell = from + dir * step
+            if (IsEnemyHere(cell)) {
+                if (metEnemy != null || eaten[cell]) {
+                    break
+                }
+                metEnemy = cell
+                enemyNode = new PathNode([], false, cell)
+            } else if (board[cell] !== null || cells[cell].classList.contains("NoPieceHere")) {
+                break
+            } else if (metEnemy) {
+                eaten[metEnemy] = true
+                let next = new PathNode([], true, cell)
+                enemyNode.children.push(next)
+                CalcJumpPathsHelper(next, cell, eaten, maxSteps, -dir)
+                eaten[metEnemy] = false
+            }
+        }
+        if (enemyNode && enemyNode.children.length > 0) {
+            let hasPathWithMoreJumps = false
+            for (let child of enemyNode.children) {
+                if (child.children.length > 0) {
+                    hasPathWithMoreJumps = true
+                    break
+                }
+            }
+            if (hasPathWithMoreJumps) {
+                for (let i = 0; i < enemyNode.children.length; ) {
+                    if (enemyNode.children[i].children.length === 0) {
+                        enemyNode.children.splice(i, 1)
+                    } else {
+                        ++i
+                    }
+                }
+            }
+            node.children.push(enemyNode)
+        }
+    }
+}
+
+function CalcJumpPaths(from) {
+    let eaten = []
+    let root = new PathNode([], false, from)
+    CalcJumpPathsHelper(root, from, eaten, 8)
+    return root
 }
 
 function GetAvailableJumps(from) {
     let jumps = []
-    let moves = [-18, -14, 14, 18]
+
     if (IsPieceQueen(from)) {
-        for (let dir of [-9, -7, 7, 9]) {
-            let metEnemy = false
-            for (let step = 1; step < 8; ++step) {
-                let cell = from + dir * step
-                if (IsEnemyHere(cell)) {
-                    if (metEnemy) {
-                        break
-                    }
-                    metEnemy = true
-                } else if (board[cell] || cells[cell].classList.contains("NoPieceHere")) {
-                    break
-                } else if (metEnemy) {
-                    jumps.push(cell)
-                }
+        let root = CalcJumpPaths(from)
+        queenRoutes = root
+        for (let child of root.children) {
+            for (let emptyCellNode of child.children) {
+                jumps.push(emptyCellNode.cell)
             }
         }
         return jumps
     }
-    for (let move of moves) {
-        let cell = from + move
-        let enemyCell = from + move / 2
-        if (board[cell] === null && !cells[cell].classList.contains("NoPieceHere") &&
-                IsEnemyHere(enemyCell)) {
-            jumps.push(cell)
+
+    for (let dir of BOTH_DIRS) {
+        let cell = from + dir * 2
+        let enemy = from + dir
+        if (!IsEnemyHere(enemy) || IsEnemyHere(cell) || board[cell] !== null || cells[cell].classList.contains("NoPieceHere")) {
+            continue
         }
+        jumps.push(cell)
     }
     return jumps
 }
@@ -218,7 +327,6 @@ function MakeMove(to) {
 
     document.getElementById(selectedPiece.pieceId).remove()
     cells[from].innerHTML = ""
-    delete availableMoves[availableMoves.indexOf(to)]
     ResetAvailableMoves()
 
     if (whitesTurn) {
@@ -229,31 +337,55 @@ function MakeMove(to) {
         blackPieces = document.querySelectorAll("p")
     }
 
-    if ([-9, -7, 7, 9].includes(to - from)) {
-        ChangeData(from, to)
-    } else {
-        let over = (from + to) / 2
-        if (!IsEnemyHere(over)) {
-            let dir = over - from
-            for (let step = 2; step < 8; ++step) {
-                over = from + dir * step
-                if (IsEnemyHere(over)) {
+    mustJumpFrom = []
+    let jumps = []
+    if (queen === "") {
+        queenRoutes = null
+        if (BOTH_DIRS.includes(to - from)) {
+            ChangeData(from, to)
+        } else {
+            let over = (from + to) / 2
+            ChangeData(from, to, over)
+            jumps = GetAvailableJumps(to)
+            if (HasJumps(jumps)) {
+                mustJumpFrom = [to]
+            }
+        }
+    } else if (queenRoutes) {
+        let enemyCell = null
+        for (let enemy of queenRoutes.children) {
+            for (let child of enemy.children) {
+                if (child.cell === to) {
+                    enemyCell = enemy.cell
+                    queenRoutes = child
                     break
                 }
             }
-            console.assert(IsEnemyHere(over))
         }
-        ChangeData(from, to, over)
-        let jumps = GetAvailableJumps(to)
-        if (jumps.length > 0) {
-            mustJumpFrom = to
+        if (queenRoutes.children.length > 0) {
+            mustJumpFrom = [to]
+            for (let enemy of queenRoutes.children) {
+                for (let child of enemy.children) {
+                    jumps.push(child.cell)
+                }
+            }
         } else {
-            mustJumpFrom = null
+            queenRoutes = null
         }
+        ChangeData(from, to, enemyCell)
+    } else {
+        ChangeData(from, to)
     }
 
-    ChangePlayer()
-    InitializeEventListenersOnPieces()
+    if (mustJumpFrom.length === 0) {
+        ResetSelectedPieceProperties()
+        ChangePlayer()
+        InitializeEventListenersOnPieces()
+    } else {
+        selectedPiece.cell = to
+        availableMoves = jumps
+        AddCellsClick()
+    }
 }
 
 function ChangeData(from, to, over) {
@@ -266,7 +398,6 @@ function ChangeData(from, to, over) {
         board[over] = null
         cells[over].innerHTML = ""
     }
-    ResetSelectedPieceProperties()
     RemoveCellonclick()
     RemoveEventListeners()
 
@@ -288,19 +419,58 @@ function RemoveEventListeners() {
 }
 
 function ChangePlayer() {
-    if (!mustJumpFrom) {
-        let prev, next
-        prev = whiteTurnText
-        next = blackTurnText
-        if (!whitesTurn) {
-            [prev, next] = [next, prev]
-        }
-        prev.style.color = "lightGrey"
-        next.style.color = "black"
-
-        whitesTurn = !whitesTurn
+    let prev, next
+    prev = whiteTurnText
+    next = blackTurnText
+    if (!whitesTurn) {
+        [prev, next] = [next, prev]
     }
+    prev.style.color = "lightGrey"
+    next.style.color = "black"
+
+    whitesTurn = !whitesTurn
 }
 
-InitializeBoard()
-InitializeEventListenersOnPieces()
+function TestQueen() {
+    const whiteP = [8]
+    const blackP = [10]
+    InitializeTable(8, 8)
+    SetPieces(whiteP, blackP)
+    InitializeEventListenersOnPieces()
+}
+
+function TestQueenJumps() {
+    const whiteP = [8]
+    const blackP = [10, 35, 51]
+    InitializeTable(8, 8)
+    SetPieces(whiteP, blackP)
+    InitializeEventListenersOnPieces()
+}
+
+function TestCheckerToQueenJumps() {
+    const whiteP = [24]
+    const blackP = [3, 21, 55]
+    InitializeTable(8, 8)
+    SetPieces(whiteP, blackP)
+    InitializeEventListenersOnPieces()
+}
+
+function TestJumps() {
+    const whiteP = [49]
+    const blackP = [35, 37, 1]
+    InitializeTable(8, 8)
+    SetPieces(whiteP, blackP)
+    InitializeEventListenersOnPieces()
+}
+
+function RunGame() {
+    InitializeTable(8, 8)
+    InitializePieces(8, 8, 3, 5)
+    InitializeEventListenersOnPieces()
+}
+
+// TestQueen()
+// TestJumps()
+// RunGame()
+// TestQueenJumps()
+TestCheckerToQueenJumps()
